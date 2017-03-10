@@ -1,0 +1,273 @@
+#!/usr/bin/python
+
+"""
+Created by Wesley Whetstone 03/10/2017
+
+Copyright 2017 Square Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+"""
+
+import sys
+import xml
+import os
+import subprocess
+import random
+import string
+import plistlib
+from Foundation import CFPreferencesCopyAppValue
+from SystemConfiguration import SCDynamicStoreCopyConsoleUser
+
+
+def password_generator(size=6, chars=string.ascii_uppercase + string.digits):
+    """Generates a random password"""
+    return ''.join(random.SystemRandom().choice(chars) for _ in range(size))
+
+
+def create_tmp_user(password, uid):
+    """Creates a temporary user with either sysadminctl or dscl depending if
+    sysadminctl is present"""
+    if os.path.exists('/usr/sbin/sysadminctl'):
+        usercmd = ['/usr/sbin/sysadminctl', '-addUser', 'fderekey',
+                   '-password', password, '-UID', uid]
+        try:
+            subprocess.call(usercmd)
+        except subprocess.CalledProcessError as e:
+            print(
+                'Failed to Create fderekey user with "/usr/sbin/sysadminctl"'
+                ' with following error.')
+            print(e)
+            exit(1)
+        return True
+    user_cmd = ['/usr/bin/dscl', '.', 'create', '/Users/fderekey']
+    uid_cmd = ['/usr/bin/dscl', '.', 'create', '/Users/fderekey', 'uid', uid]
+    password_cmd = ['/usr/bin/dscl', '.', 'passwd', '/Users/fderekey',
+                    password]
+    shell_cmd = ['/usr/bin/dscl', '.', 'create', '/Users/fderekey',
+                 'UserShell', '/usr/bin/false']
+    userg_cmd = ['/usr/bin/dscl', '.', 'create', '/Users/fderekey',
+                 'PrimaryGroupID', '20']
+    realname_cmd = ['/usr/bin/dscl', '.', 'create', '/Users/fderekey',
+                    'RealName', 'Filevault User']
+    # run the above commands
+    try:
+        subprocess.call(user_cmd)
+        subprocess.call(uid_cmd)
+        subprocess.call(password_cmd)
+        subprocess.call(shell_cmd)
+        subprocess.call(userg_cmd)
+        subprocess.call(realname_cmd)
+    except subprocess.CalledProcessError as e:
+        print('ERORR: Failed to Create "fderekey" user with "/usr/bin/dscl" \
+            with following error.')
+        print(e)
+        exit(1)
+
+
+def check_for_redirect_pref():
+    """This checks to see if a RedirectURL is set for filevault, we do not
+    support this just yet so we will exit if we find one"""
+    redirect_pref = CFPreferencesCopyAppValue(
+        'RedirectURL', 'com.apple.security.FDERecoveryRedirect')
+
+    if redirect_pref:
+        return True
+    return False
+
+
+def get_free_uid():
+    """tries to find an open uid number under 500"""
+    cmd = ['dscl', '.', '-list', '/Users', 'UniqueID']
+    user_list = subprocess.check_output(cmd).split()
+
+    for uid in xrange(1, 500):
+        uid = str(uid)
+        if uid not in user_list:
+            return uid
+
+
+def change_recovery(password, output_path):
+    """takes two parameters 'password' which is a password to unlock
+    filevault, and 'output_path' which is the path you want the new key written
+    to"""
+    rotate_inputplist = {"Password": password}
+    input_plist = plistlib.writePlistToString(rotate_inputplist)
+    redirect_chg_cmd = ['/usr/bin/fdesetup', 'changerecovery', '-personal',
+                        '-inputplist']
+    chg_cmd = ['/usr/bin/fdesetup', 'changerecovery', '-personal',
+               '-outputplist', '-inputplist']
+    if check_for_redirect_pref():
+        chg_cmd = redirect_chg_cmd
+    cmd = subprocess.Popen(chg_cmd, stdout=subprocess.PIPE,
+                           stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+    stdout_data, err = cmd.communicate(input=input_plist)
+    try:
+        if check_for_redirect_pref():
+            print('Using a Redirect Profile so we can exit safely')
+            return False
+        output_plist = plistlib.readPlistFromString(stdout_data)
+        plistlib.writePlist(output_plist, output_path)
+        print('Succesfully Rotated Key...')
+    except xml.parsers.expat.ExpatError:
+        # best exception I could find for a failed output_plist value
+        if err:
+            print(
+                'Failed to Rotate the recovery key with error: {}.'.format(
+                    err))
+            delete_tmp_user('fderekey')
+            os.remove('/var/root/fdeadduser')
+            sys.exit(1)
+
+
+def add_fv_user(fdeadduser, user, password):
+    """Adds given 'user' with the given 'password' to filevault."""
+    add_user_cmd = [fdeadduser, user, password]
+    subprocess.call(add_user_cmd)
+
+
+def delete_tmp_user(username):
+    """Deletes the give 'username'."""
+    if os.path.exists('/usr/sbin/sysadminctl'):
+        usercmd = ['/usr/sbin/sysadminctl', '-deleteUser', username, '-secure']
+        subprocess.call(usercmd)
+    else:
+        delete_cmd = ['/usr/bin/dscl', '.', 'delete',
+                      '/Users/{}'.format(username)]
+        subprocess.call(delete_cmd)
+
+
+def make_root_read_only(path):
+    """ Makes the given 'path' owned by root and readable only by root"""
+    try:
+        os.chown(path, 0, 80)
+        os.chmod(path, 0400)
+    except OSError as error:
+        print('Failed to change permissions of {} with the '
+              'following error.'.format(path))
+        print(error)
+
+
+def using_crypt():
+    """Checks if we are running on a machine that is configured with crypt
+    returns true or false accordingly"""
+    serverurl = CFPreferencesCopyAppValue(
+        'ServerURL', 'com.grahamgilbert.crypt')
+    if serverurl:
+        return True
+    return False
+
+
+def check_enabled_user(user_to_check):
+    """Checks to make sure that 'user_to_check' is in the filevault list."""
+    fde_users = subprocess.check_output(
+        ['/usr/bin/fdesetup', 'list']).split('\n')
+    fde_users = [u.split(',')[0] for u in fde_users]
+    if user_to_check not in fde_users:
+        return False
+    else:
+        return True
+
+
+def get_console_user():
+    """returns the current console user via PyObjc"""
+    cfuser = SCDynamicStoreCopyConsoleUser(None, None, None)
+    return cfuser[0]
+
+
+def get_filevault_enabled_user():
+    """Crypt requires an EnabledUser key in the output plist, find out what
+    user we should use."""
+    console_user = get_console_user()
+    if console_user:
+        return console_user
+    try:
+        fde_users = subprocess.check_output(
+            ['/usr/bin/fdesetup', 'list']).split('\n')
+    except subprocess.CalledProcessError as e:
+        raise e
+
+    try:
+        user = fde_users[0].split(',')[0]
+    except IndexError:
+        user = 'fderekey'
+    return user
+
+
+def add_crypt_enabled_user(user, plist):
+    """Adds the given 'user' to giver 'plist' as 'EnabledUser' Key"""
+    try:
+        crypt_info = plistlib.readPlist(plist)
+        crypt_info['EnabledUser'] = user
+        plistlib.writePlist(crypt_info, plist)
+    except IOError:
+        print('Could not find {}...'.format(plist))
+        print('Passing to make sure we do our CleanUp...')
+        pass
+
+
+def check_filevault():
+    """Checks to see if filevault is enabled if it is not we can exit because
+    there is no reason to run this if filevault is off."""
+    fv_cmd = ['/usr/bin/fdesetup', 'isactive']
+    try:
+        is_active = subprocess.check_output(
+            fv_cmd, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as exc:
+        if exc.output and 'false' in exc.output:
+            print('FileVault appears to be disabled...')
+            return False
+        elif not exc.output:
+            print('Encountered problem determining FileVault status...')
+            return False
+        else:
+            print(exc.output)
+            return False
+    return True
+
+
+def main():
+    """ Main """
+    fdeadduser = '/var/root/fdeadduser'
+    if not check_filevault():
+        os.remove(fdeadduser)
+        exit(1)
+    fv_password = password_generator(10)
+    fv_user = 'fderekey'
+    output_key_path = '/var/root/fderekey.plist'
+    crypt_output = '/var/root/crypt_output.plist'
+    if not os.path.isfile(fdeadduser):
+        print('ERROR!! We could not find "{}"'.format(fdeadduser))
+        sys.exit(1)
+    user_uid = get_free_uid()
+    create_tmp_user(fv_password, user_uid)
+    add_fv_user(fdeadduser, fv_user, fv_password)
+    if not check_enabled_user(fv_user):
+        print('EROOR! Failed to add user "{}" to FileVault...'.format(fv_user))
+        delete_tmp_user(fv_user)
+        os.remove(fdeadduser)
+        exit(1)
+    if using_crypt():
+        output_key_path = crypt_output
+    change_recovery(fv_password, output_key_path)
+    delete_tmp_user(fv_user)
+    os.remove(fdeadduser)  # cleanup fdeadduser from the machine
+    user = get_filevault_enabled_user()
+    if using_crypt():
+        add_crypt_enabled_user(user, output_key_path)
+    if not check_for_redirect_pref():
+        make_root_read_only(output_key_path)
+
+
+if __name__ == '__main__':
+    """Run Main.. :) """
+    main()
