@@ -117,7 +117,7 @@ def change_recovery(password, output_path):
             return False
         output_plist = plistlib.readPlistFromString(stdout_data)
         plistlib.writePlist(output_plist, output_path)
-        print('Succesfully Rotated Key...')
+        print('Successfully Rotated Key...')
     except xml.parsers.expat.ExpatError:
         # best exception I could find for a failed output_plist value
         if err:
