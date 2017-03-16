@@ -129,10 +129,33 @@ def change_recovery(password, output_path):
             sys.exit(1)
 
 
+def check_user_exists(user):
+    cmd = ['/usr/bin/dscl', '.', '-list', '/Users']
+    user_list = subprocess.check_output(cmd).split()
+    if user in user_list:
+        print('Found User "{}" in user list.'.format(user))
+        return True
+    return False
+
 def add_fv_user(fdeadduser, user, password):
     """Adds given 'user' with the given 'password' to filevault."""
-    add_user_cmd = [fdeadduser, user, password]
-    subprocess.call(add_user_cmd)
+    if not check_user_exists(user):
+        print(
+            'User "{}" doesn\'t exist, can not add to FileVault'.format(user))
+    count = 1
+    while count < 5:
+        add_user_cmd = [fdeadduser, user, password]
+        try:
+            print count
+            subprocess.call(add_user_cmd)
+        except subprocess.CalledProcessError:
+            print('ERROR! Adding FileVault user Failed')
+            return False
+        if check_enabled_user(user):
+            return True
+        count += 1
+    print('Tried 5 times to add user to FileVault and Failed each time...')
+    return False
 
 
 def delete_tmp_user(username):
@@ -250,9 +273,8 @@ def main():
         sys.exit(1)
     user_uid = get_free_uid()
     create_tmp_user(fv_password, user_uid)
-    add_fv_user(fdeadduser, fv_user, fv_password)
-    if not check_enabled_user(fv_user):
-        print('EROOR! Failed to add user "{}" to FileVault...'.format(fv_user))
+    if not add_fv_user(fdeadduser, fv_user, fv_password):
+        print('ERROR! Failed to add user "{}" to FileVault...'.format(fv_user))
         delete_tmp_user(fv_user)
         os.remove(fdeadduser)
         exit(1)
