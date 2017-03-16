@@ -29,9 +29,12 @@ from Foundation import CFPreferencesCopyAppValue
 from SystemConfiguration import SCDynamicStoreCopyConsoleUser
 
 
-def password_generator(size=6, chars=string.ascii_uppercase + string.digits):
-    """Generates a random password"""
-    return ''.join(random.SystemRandom().choice(chars) for _ in range(size))
+def password_generator(pwdSize):
+    """Generates a random password with uppercase, lowercase, digits,
+    and special characters."""
+    chars = (string.ascii_uppercase + string.digits +
+        string.punctuation + string.ascii_lowercase)
+    return ''.join((random.choice(chars)) for x in range(pwdSize))
 
 
 def create_tmp_user(password, uid):
@@ -264,7 +267,7 @@ def main():
     if not check_filevault():
         os.remove(fdeadduser)
         exit(1)
-    fv_password = password_generator(10)
+    fv_password = password_generator(30)
     fv_user = 'fderekey'
     output_key_path = '/var/root/fderekey.plist'
     crypt_output = '/var/root/crypt_output.plist'
