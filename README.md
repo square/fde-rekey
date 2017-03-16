@@ -36,9 +36,11 @@ Please see [CONTRIBUTING](CONTRIBUTING.md) for details.
 
 ### Credit
 
-A special thank you to contributors of the [macdestroyer][2] project. (Don't worry fde-rekey will not destroy your Mac.) Without this fde-rekey would not be possible!
+A special thank you to contributors of the [macdestroyer][2] project as well as [Graham Gilbert][5] and [Owen Pragel][6] for help with FileVault ReDirection. Without them fde-rekey would not be possible!
 
 [1]: https://github.com/munki/munki-pkg
 [2]: https://github.com/google/macops/tree/master/macdestroyer
 [3]: https://github.com/grahamgilbert/crypt2
 [4]: https://macadmins.herokuapp.com/
+[5]: https://grahamgilbert.com/
+[6]: https://github.com/opragel
