@@ -4,7 +4,7 @@
     "name": "fde-rekey.pkg",
     "distribution_style": true,
     "install_location": "/",
-    "version": "1.0",
+    "version": "1.0.1",
     "ownership": "recommended",
     "identifier": "com.github.square.fderekey"
 }
