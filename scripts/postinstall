@@ -109,13 +109,15 @@ def change_recovery(password, output_path):
                         '-inputplist']
     chg_cmd = ['/usr/bin/fdesetup', 'changerecovery', '-personal',
                '-outputplist', '-inputplist']
-    if check_for_redirect_pref():
+    using_redirect = check_for_redirect_pref()
+    if using_redirect:
         chg_cmd = redirect_chg_cmd
+    print('Attempting to Rotate Recovery Key with command {}'.format(chg_cmd))
     cmd = subprocess.Popen(chg_cmd, stdout=subprocess.PIPE,
                            stdin=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout_data, err = cmd.communicate(input=input_plist)
     try:
-        if check_for_redirect_pref():
+        if using_redirect:
             print('Using a Redirect Profile so we can exit safely')
             return False
         output_plist = plistlib.readPlistFromString(stdout_data)
@@ -149,7 +151,6 @@ def add_fv_user(fdeadduser, user, password):
     while count < 5:
         add_user_cmd = [fdeadduser, user, password]
         try:
-            print count
             subprocess.call(add_user_cmd)
         except subprocess.CalledProcessError:
             print('ERROR! Adding FileVault user Failed')
@@ -201,6 +202,7 @@ def check_enabled_user(user_to_check):
     if user_to_check not in fde_users:
         return False
     else:
+        print('Found user "{}" in FileVault'.format(user_to_check))
         return True
 
 
