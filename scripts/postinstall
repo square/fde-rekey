@@ -111,6 +111,7 @@ def change_recovery(password, output_path):
                '-outputplist', '-inputplist']
     using_redirect = check_for_redirect_pref()
     if using_redirect:
+        unload_recovery_agent()
         chg_cmd = redirect_chg_cmd
     print('Attempting to Rotate Recovery Key with command {}'.format(chg_cmd))
     cmd = subprocess.Popen(chg_cmd, stdout=subprocess.PIPE,
@@ -262,6 +263,14 @@ def check_filevault():
             return False
     return True
 
+def unload_recovery_agent():
+    path = '/System/Library/LaunchDaemons/com.apple.security.FDERecoveryAgent.plist'
+    cmd = ['/bin/launchctl', 'list']
+    proc_list = subprocess.check_output(cmd)
+    if 'com.apple.security.FDERecoveryAgent' in proc_list:
+        print('Unloading com.apple.security.FDERecoveryAgent.plist')
+        unload_agent_cmd = ['launchctl', 'unload', path]
+        subprocess.call(unload_agent_cmd)
 
 def main():
     """ Main """
