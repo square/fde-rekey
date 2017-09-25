@@ -1,6 +1,9 @@
 # fde-rekey
 
-fde-rekey is a simple macOS package, designed to generate a new FileVault2 personal recovery key without any user interaction. It is designed to work on macOS 10.9 - 10.12.3.
+fde-rekey is a simple macOS package, designed to generate a new FileVault2 personal recovery key without any user interaction. It is designed to work on macOS 10.9 - 10.12.6.
+
+### Warning
+fde-rekey will not work on an APFS file-system. There are no plans to support APFS at this time. The latest version of [Crypt][3] has a similar feature you may find useful.
 
 ## Usage
 
